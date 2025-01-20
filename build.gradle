@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.lorenzorogers.talkative'
+version = '0.0.1'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // LANGCHAIN4J
+    implementation group: 'dev.langchain4j', name: 'langchain4j-google-ai-gemini', version: '1.0.0-alpha1'
+    implementation 'dev.langchain4j:langchain4j:1.0.0-alpha1'
+
+    // LOGGING
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.24.3'
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.24.3'
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-slf4j2-impl', version: '2.24.3'
+
+
+    // TESTING, I THINK
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

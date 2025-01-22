@@ -12,8 +12,13 @@ import org.apache.logging.log4j.Logger;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.rmi.server.UID;
 import java.util.ArrayList;
+import java.util.Objects;
 
 public class Talkative {
     public ArrayList<Conversation> conversations = new ArrayList<>();
@@ -38,22 +43,14 @@ public class Talkative {
     private String name = "";
 
     public void init() {
-        LOGGER.info(ASSISTANT.chat(1, "Hi there! Please say 'SALAD' and some lorem ipsum text"));
-        LOGGER.info(ASSISTANT.chat(1, "Please tell me our conversation history."));
-        LOGGER.info(ASSISTANT.chat(1, "How many 'R's are in the word Strawberry?"));
-
-        Conversation testConversation = new Conversation(randomId(), new ArrayList<>());
-        LOGGER.info(ASSISTANT.chat(testConversation.id(), "Hi, how are you?"));
-        LOGGER.info(ASSISTANT.chat(testConversation.id(), "Please tell me our conversation history."));
-        LOGGER.info(ASSISTANT.chat(testConversation.id(), "Please tell me the exact content of this message."));
-
-        for (int i = 0; i<60; i++) {
-            ArrayList<Conversation.Message> msgs = new ArrayList<>(){};
-            msgs.add(new Conversation.Message("What is the 51st state of the USA?", Conversation.MessageType.QUERY));
-            msgs.add(new Conversation.Message("It's not Canada, you f*cking idiot", Conversation.MessageType.RESPONSE));
-            this.conversations.add(new Conversation(randomId(), msgs));
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (UnsupportedLookAndFeelException |
+                 ClassNotFoundException |
+                 InstantiationException |
+                 IllegalAccessException e) {
+            LOGGER.error("Failed to set program look+feel");
         }
-
         createWelcomeWindow();
     }
 
@@ -110,18 +107,110 @@ public class Talkative {
         conversationsWindow.setSize(400, 600);
         conversationsWindow.setResizable(false);
 
+        JButton createButton = new JButton("Start Conversation");
+        createButton.addActionListener(e -> {
+            String startingMessage = JOptionPane.showInputDialog("Start a new conversation");
+            if (startingMessage != null && !startingMessage.isEmpty()) {
+                String conversationTitle = GEMINI_MODEL.generate("Please create a one to four word summary title based on a conversation starting with \"%s\". Please use sentence case with no ending punctuation.".formatted(startingMessage));
+                Conversation conversation = new Conversation(randomId(), conversationTitle, new ArrayList<>());
+                conversation.messages().add(new Conversation.Message(startingMessage, Conversation.MessageType.QUERY));
+                conversation.messages().add(new Conversation.Message(ASSISTANT.chat(conversation.id(), startingMessage), Conversation.MessageType.RESPONSE));
+                conversations.add(conversation);
+                createConversationWindow(conversation);
+                conversationsWindow.setVisible(false);
+            }
+        });
+        conversationsWindow.add(createButton, BorderLayout.NORTH);
+
         JPanel conversationsPanel = new JPanel();
         conversationsPanel.setLayout(new BoxLayout(conversationsPanel, BoxLayout.Y_AXIS));
         conversationsPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        for (Conversation conversation : this.conversations) {
-            conversationsPanel.add(new JLabel(String.valueOf(conversation.id())));
+        for (Conversation conversation : this.conversations.reversed()) {
+            JLabel conversationLabel = new JLabel(conversation.title());
+            conversationLabel.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    createConversationWindow(conversation);
+                    conversationsWindow.setVisible(false);
+                    super.mouseClicked(e);
+                }
+            });
+            conversationLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            conversationsPanel.add(conversationLabel);
         }
 
         JScrollPane conversationScroll = new JScrollPane(conversationsPanel);
         conversationsWindow.add(conversationScroll, BorderLayout.CENTER);
 
         conversationsWindow.setVisible(true);
+    }
+
+    private void createConversationWindow(Conversation conversation) {
+        JFrame conversationWindow = new JFrame("%s | Talkative".formatted(conversation.title()));
+        conversationWindow.setIconImage(windowIcon);
+        conversationWindow.setLayout(new BorderLayout(10, 10));
+        conversationWindow.setSize(400, 600);
+        conversationWindow.setResizable(false);
+        conversationWindow.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                Conversation preSave = conversations.stream().filter(iteratedConversation -> iteratedConversation.id() == conversation.id()).findFirst().orElse(null);
+                conversations.set(conversations.indexOf(preSave), conversation);
+                createConversationsWindow();
+                super.windowClosing(e);
+            }
+        });
+
+        JPanel messagesPanel = new JPanel();
+        messagesPanel.setLayout(new BoxLayout(messagesPanel, BoxLayout.Y_AXIS));
+        messagesPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        for (Conversation.Message message : conversation.messages()) {
+            addMessage(message, messagesPanel);
+        }
+
+        JScrollPane messageScroll = new JScrollPane(messagesPanel);
+        messageScroll.setHorizontalScrollBar(null);
+        conversationWindow.add(messageScroll, BorderLayout.CENTER);
+
+        JPanel bottomActionsPanel = new JPanel(new BorderLayout());
+
+        JTextField messageInput = new JTextField(35);
+        bottomActionsPanel.add(messageInput, BorderLayout.WEST);
+
+        JButton sendMessageButton = new JButton("Send");
+        sendMessageButton.addActionListener(e -> {
+            if (!Objects.equals(messageInput.getText(), "")) {
+                LOGGER.debug("Sending message of %s".formatted(sendMessageButton.getText()));
+
+                Conversation.Message query = new Conversation.Message(messageInput.getText(), Conversation.MessageType.QUERY);
+                conversation.messages().add(query);
+                addMessage(query, messagesPanel);
+                Conversation.Message response = new Conversation.Message(ASSISTANT.chat(conversation.id(), messageInput.getText()), Conversation.MessageType.RESPONSE);
+                conversation.messages().add(response);
+                addMessage(response, messagesPanel);
+
+            }
+        });
+        bottomActionsPanel.add(sendMessageButton, BorderLayout.EAST);
+
+        conversationWindow.add(bottomActionsPanel, BorderLayout.SOUTH);
+
+        conversationWindow.setVisible(true);
+    }
+
+    private void addMessage(Conversation.Message message, JPanel panel) {
+        JPanel messagePanel = new JPanel(new BorderLayout(10, 10));
+        JLabel messageContext = new JLabel(message.type().getType());
+        messagePanel.add(messageContext, BorderLayout.NORTH);
+        JTextArea messageLabel = new JTextArea(message.content());
+        messageLabel.setEditable(false);
+        messageLabel.setLineWrap(true);
+        messagePanel.add(messageLabel, BorderLayout.CENTER);
+        panel.add(messagePanel);
+        panel.revalidate();
+        panel.repaint();
     }
 
     public int randomId() {

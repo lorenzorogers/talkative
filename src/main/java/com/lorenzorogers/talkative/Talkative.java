@@ -33,14 +33,15 @@ public class Talkative {
             .apiKey(API_KEY)
             .modelName("gemini-1.5-flash")
             .build();
-    public static Assistant ASSISTANT = AiServices.builder(Assistant.class)
-            .chatLanguageModel(GEMINI_MODEL)
-            .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(10))
-            .build();
+
     public static final Logger LOGGER = LogManager.getLogger("Talkative");
 
     private final Image windowIcon = Toolkit.getDefaultToolkit().getImage(getClass().getResource("/talkative.png"));
     private String name = "";
+    public static Assistant ASSISTANT = AiServices.builder(Assistant.class)
+            .chatLanguageModel(GEMINI_MODEL)
+            .chatMemoryProvider(memoryId -> MessageWindowChatMemory.withMaxMessages(10))
+            .build();
 
     public void init() {
         try {
@@ -114,7 +115,7 @@ public class Talkative {
                 String conversationTitle = GEMINI_MODEL.generate("Please create a one to four word summary title based on a conversation starting with \"%s\". Please use sentence case with no ending punctuation.".formatted(startingMessage));
                 Conversation conversation = new Conversation(randomId(), conversationTitle, new ArrayList<>());
                 conversation.messages().add(new Conversation.Message(startingMessage, Conversation.MessageType.QUERY));
-                conversation.messages().add(new Conversation.Message(ASSISTANT.chat(conversation.id(), startingMessage), Conversation.MessageType.RESPONSE));
+                conversation.messages().add(new Conversation.Message(ASSISTANT.chatWithName(this.name, conversation.id(), startingMessage), Conversation.MessageType.RESPONSE));
                 conversations.add(conversation);
                 createConversationWindow(conversation);
                 conversationsWindow.setVisible(false);
